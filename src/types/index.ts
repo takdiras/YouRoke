@@ -42,6 +42,7 @@ export interface DeckState {
   currentTime: number; // Current playback position in seconds
   duration: number; // Total duration in seconds
   seekTo: number | null; // Target seek time (null = no seek pending)
+  playbackRate: number; // Playback speed (0.5 to 2.0, 1.0 = normal)
 }
 
 /**
@@ -190,6 +191,7 @@ export const DEFAULT_DECK_STATE: DeckState = {
   currentTime: 0,
   duration: 0,
   seekTo: null,
+  playbackRate: 1.0,
 };
 
 export const DEFAULT_DJ_STATE: DJStoreState = {

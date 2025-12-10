@@ -7,6 +7,7 @@ interface VideoPlayerProps {
   volume: number; // 0-1 normalized
   playing: boolean;
   seekTo?: number | null; // Target time to seek to
+  playbackRate?: number; // Playback speed (0.5-2.0, default 1.0)
   onReady?: (player: YouTubePlayer) => void;
   onStateChange?: (state: number) => void;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
@@ -30,6 +31,7 @@ export function VideoPlayer({
   volume,
   playing,
   seekTo,
+  playbackRate = 1.0,
   onReady,
   onStateChange,
   onTimeUpdate,
@@ -161,6 +163,22 @@ export function VideoPlayer({
       console.error('[VideoPlayer] Volume control error:', error);
     }
   }, [volume]);
+
+  /**
+   * Control playback rate (tempo/speed) based on playbackRate prop
+   */
+  useEffect(() => {
+    if (!playerRef.current || !isReadyRef.current) return;
+
+    try {
+      // YouTube API supports playback rates: 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2
+      // For DJ purposes, we'll set any rate and let YouTube round to nearest supported
+      playerRef.current.setPlaybackRate(playbackRate);
+      console.log(`[VideoPlayer] Playback rate set to ${playbackRate}`);
+    } catch (error) {
+      console.error('[VideoPlayer] Playback rate control error:', error);
+    }
+  }, [playbackRate]);
 
   /**
    * Cleanup time tracking on unmount

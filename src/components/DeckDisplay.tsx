@@ -10,6 +10,114 @@ interface DeckDisplayProps {
 }
 
 /**
+ * Vertical Tempo Slider component
+ */
+function TempoSlider({ 
+  value, 
+  onChange, 
+  accentColor,
+  baseBpm 
+}: { 
+  value: number; 
+  onChange: (value: number) => void;
+  accentColor: string;
+  baseBpm: number;
+}) {
+  // Range: -8% to +8%
+  const minPercent = -8;
+  const maxPercent = 8;
+  
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange(parseFloat(e.target.value));
+  };
+  
+  const handleDoubleClick = () => {
+    onChange(0); // Reset to 0%
+  };
+  
+  const adjustedBpm = baseBpm > 0 ? Math.round(baseBpm * (1 + value / 100)) : 0;
+  
+  return (
+    <div className="flex flex-col items-center gap-1 h-full py-2">
+      <span className="text-[10px] text-neutral-500 font-medium">TEMPO</span>
+      
+      {/* Tempo percentage display */}
+      <div className="text-xs font-mono font-bold" style={{ color: accentColor }}>
+        {value > 0 ? '+' : ''}{value.toFixed(1)}%
+      </div>
+      
+      {/* Vertical slider container */}
+      <div className="flex-1 flex items-center justify-center relative min-h-[100px]">
+        <input
+          type="range"
+          min={minPercent}
+          max={maxPercent}
+          step={0.1}
+          value={value}
+          onChange={handleChange}
+          onDoubleClick={handleDoubleClick}
+          aria-label="Tempo adjustment"
+          title={`Tempo: ${value > 0 ? '+' : ''}${value.toFixed(1)}%`}
+          className="tempo-slider"
+          style={{
+            '--accent-color': accentColor,
+          } as React.CSSProperties}
+        />
+        {/* Center mark */}
+        <div className="absolute left-1/2 -translate-x-1/2 w-4 h-0.5 bg-neutral-500 pointer-events-none" />
+      </div>
+      
+      {/* Adjusted BPM display */}
+      {baseBpm > 0 && (
+        <div className="text-[10px] text-neutral-400 font-mono">
+          {adjustedBpm}
+        </div>
+      )}
+      
+      <style>{`
+        .tempo-slider {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 100px;
+          height: 6px;
+          background: linear-gradient(to right, #404040, #525252, #404040);
+          border-radius: 3px;
+          transform: rotate(-90deg);
+          transform-origin: center;
+          cursor: pointer;
+        }
+        
+        .tempo-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 16px;
+          height: 24px;
+          background: linear-gradient(180deg, #666 0%, #444 100%);
+          border: 1px solid #888;
+          border-radius: 3px;
+          cursor: pointer;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .tempo-slider::-webkit-slider-thumb:hover {
+          background: linear-gradient(180deg, #777 0%, #555 100%);
+        }
+        
+        .tempo-slider::-moz-range-thumb {
+          width: 16px;
+          height: 24px;
+          background: linear-gradient(180deg, #666 0%, #444 100%);
+          border: 1px solid #888;
+          border-radius: 3px;
+          cursor: pointer;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+      `}</style>
+    </div>
+  );
+}
+
+/**
  * DeckDisplay component - Professional DJ deck UI
  *
  * Features:
@@ -17,9 +125,13 @@ interface DeckDisplayProps {
  * - Track info display with BPM
  * - Play/pause/cue controls
  * - Volume/level meters
+ * - Tempo slider for pitch adjustment (actually slows/speeds up playback)
  */
 export function DeckDisplay({ deck, className = '' }: DeckDisplayProps) {
   const deckState = useDJStore((state) => (deck === 'A' ? state.deckA : state.deckB));
+  const updateDeck = useDJStore((state) =>
+    deck === 'A' ? state.updateDeckA : state.updateDeckB
+  );
   const togglePlay = useDJStore((state) =>
     deck === 'A' ? state.toggleDeckAPlay : state.toggleDeckBPlay
   );
@@ -30,6 +142,10 @@ export function DeckDisplay({ deck, className = '' }: DeckDisplayProps) {
   const crossfaderCurve = useDJStore((state) => state.crossfaderCurve);
   
   const [bpm, setBpm] = useState<number>(0);
+
+  // Convert playbackRate from store to tempo percentage for display
+  // playbackRate 1.0 = 0%, 0.92 = -8%, 1.08 = +8%
+  const tempoAdjust = (deckState.playbackRate - 1) * 100;
 
   const mixValues = applyCurve(crossfaderValue, crossfaderCurve);
   const currentVolume = deck === 'A' ? mixValues.deckAVolume : mixValues.deckBVolume;
@@ -47,121 +163,151 @@ export function DeckDisplay({ deck, className = '' }: DeckDisplayProps) {
   const handleBpmDetected = useCallback((detectedBpm: number) => {
     setBpm(detectedBpm);
   }, []);
+  
+  // Handle tempo adjustment - convert percentage to playback rate and update store
+  const handleTempoChange = useCallback((percentValue: number) => {
+    // Convert percentage to playback rate: 0% = 1.0, +8% = 1.08, -8% = 0.92
+    const newPlaybackRate = 1 + (percentValue / 100);
+    // Clamp to reasonable bounds (YouTube supports 0.25 to 2.0)
+    const clampedRate = Math.max(0.5, Math.min(2.0, newPlaybackRate));
+    updateDeck({ playbackRate: clampedRate });
+  }, [updateDeck]);
+  
+  // Calculate adjusted BPM
+  const adjustedBpm = bpm > 0 ? Math.round(bpm * (1 + tempoAdjust / 100)) : 0;
+
+  // Tempo slider component
+  const tempoSlider = (
+    <div className="w-12 bg-neutral-900/80 border-neutral-700/50 flex flex-col">
+      <TempoSlider 
+        value={tempoAdjust} 
+        onChange={handleTempoChange}
+        accentColor={accentColor}
+        baseBpm={bpm}
+      />
+    </div>
+  );
 
   return (
-    <div className={`bg-neutral-900/95 border border-neutral-700/50 rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden ${className}`}>
-      {/* Deck Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-black/30 border-b border-neutral-700/50">
-        <div className="flex items-center gap-2">
-          <span className={`text-sm font-bold ${accentClass}`}>DECK {deck}</span>
-          <div
-            className={`w-2.5 h-2.5 rounded-full ${deckState.playing ? bgAccent : 'bg-neutral-600'} ${
-              deckState.playing ? 'animate-pulse shadow-lg' : ''
-            }`}
-            style={{ boxShadow: deckState.playing ? `0 0 10px ${accentColor}` : 'none' }}
-          />
-        </div>
-        <div className="flex items-center gap-3">
-          {/* BPM Display */}
-          {bpm > 0 && (
-            <div className={`flex items-center gap-1 ${accentClass}`}>
-              <span className="text-lg font-bold font-mono">{bpm}</span>
-              <span className="text-xs text-neutral-400">BPM</span>
-            </div>
-          )}
-          <span className="text-xs text-neutral-400 font-mono bg-neutral-800/50 px-2 py-0.5 rounded">
-            {Math.round(currentVolume * 100)}%
-          </span>
-        </div>
-      </div>
-
-      {/* Waveform SeekBar */}
-      <div className="relative h-20 bg-neutral-950/80 border-b border-neutral-700/50">
-        <WaveformSeekBar
-          videoId={deckState.videoId || null}
-          currentTime={deckState.currentTime}
-          duration={deckState.duration}
-          color={accentColor}
-          playedColor={playedColor}
-          height={80}
-          onSeek={handleSeek}
-          onBpmDetected={handleBpmDetected}
-          className="h-full"
-        />
-      </div>
-
-      {/* Track Info */}
-      <div className="px-4 py-3 bg-black/20 border-b border-neutral-700/50">
-        {deckState.videoId ? (
-          <div className="space-y-1">
-            <div className="text-sm text-white font-medium truncate">
-              {deckState.title || 'Unknown Title'}
-            </div>
-            <div className="text-xs text-neutral-400 truncate">
-              {deckState.artist || 'Unknown Artist'}
-            </div>
+    <div className={`flex ${deck === 'B' ? 'flex-row' : 'flex-row-reverse'} bg-neutral-900/95 border border-neutral-700/50 rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden ${className}`}>
+      {/* Tempo Slider */}
+      {tempoSlider}
+      
+      {/* Main Deck Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Deck Header */}
+        <div className="flex items-center justify-between px-4 py-3 bg-black/30 border-b border-neutral-700/50">
+          <div className="flex items-center gap-2">
+            <span className={`text-sm font-bold ${accentClass}`}>DECK {deck}</span>
+            <div
+              className={`w-2.5 h-2.5 rounded-full ${deckState.playing ? bgAccent : 'bg-neutral-600'} ${
+                deckState.playing ? 'animate-pulse shadow-lg' : ''
+              }`}
+              style={{ boxShadow: deckState.playing ? `0 0 10px ${accentColor}` : 'none' }}
+            />
           </div>
-        ) : (
-          <div className="text-sm text-neutral-500 italic">No track loaded</div>
-        )}
-      </div>
+          <div className="flex items-center gap-3">
+            {/* BPM Display - shows adjusted BPM */}
+            {bpm > 0 && (
+              <div className={`flex items-center gap-1 ${accentClass}`}>
+                <span className="text-lg font-bold font-mono">{adjustedBpm}</span>
+                <span className="text-xs text-neutral-400">BPM</span>
+              </div>
+            )}
+            <span className="text-xs text-neutral-400 font-mono bg-neutral-800/50 px-2 py-0.5 rounded">
+              {Math.round(currentVolume * 100)}%
+            </span>
+          </div>
+        </div>
 
-      {/* Transport Controls */}
-      <div className="flex items-center justify-center gap-3 p-4 bg-black/20">
-        {/* Cue Button */}
-        <Button
-          variant="ghost"
-          disabled={!deckState.videoId}
-          className="w-14 h-14 rounded-xl bg-neutral-800/80 hover:bg-neutral-700 disabled:opacity-30 border border-neutral-600/50 text-neutral-400 hover:text-white shadow-lg"
-        >
-          <span className="text-xs font-bold">CUE</span>
-        </Button>
-
-        {/* Play/Pause Button */}
-        <Button
-          variant="ghost"
-          onClick={togglePlay}
-          disabled={!deckState.videoId}
-          className={`w-16 h-16 rounded-full ${
-            deckState.playing ? bgAccent : 'bg-neutral-800/80 hover:bg-neutral-700'
-          } disabled:opacity-30 border-2 ${
-            deckState.playing ? 'border-white/30' : 'border-neutral-600/50'
-          } shadow-xl`}
-          style={{
-            boxShadow: deckState.playing ? `0 0 25px ${accentColor}` : 'none',
-          }}
-        >
-          {deckState.playing ? (
-            <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-            </svg>
-          ) : (
-            <svg className="w-7 h-7 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-          )}
-        </Button>
-
-        {/* Sync Button */}
-        <Button
-          variant="ghost"
-          disabled={!deckState.videoId}
-          className="w-14 h-14 rounded-xl bg-neutral-800/80 hover:bg-neutral-700 disabled:opacity-30 border border-neutral-600/50 text-neutral-400 hover:text-white shadow-lg"
-        >
-          <span className="text-xs font-bold">SYNC</span>
-        </Button>
-      </div>
-
-      {/* Level Meter */}
-      <div className="px-4 pb-4">
-        <div className="h-2 bg-neutral-800/80 rounded-full overflow-hidden">
-          <div
-            className={`h-full ${bgAccent} transition-all duration-100 rounded-full`}
-            style={{
-              width: `${currentVolume * 100}%`,
-              boxShadow: `0 0 8px ${accentColor}`,
-            }}
+        {/* Waveform SeekBar */}
+        <div className="relative h-20 bg-neutral-950/80 border-b border-neutral-700/50">
+          <WaveformSeekBar
+            videoId={deckState.videoId || null}
+            currentTime={deckState.currentTime}
+            duration={deckState.duration}
+            color={accentColor}
+            playedColor={playedColor}
+            height={80}
+            onSeek={handleSeek}
+            onBpmDetected={handleBpmDetected}
+            className="h-full"
           />
+        </div>
+
+        {/* Track Info */}
+        <div className="px-4 py-3 bg-black/20 border-b border-neutral-700/50">
+          {deckState.videoId ? (
+            <div className="space-y-1">
+              <div className="text-sm text-white font-medium truncate">
+                {deckState.title || 'Unknown Title'}
+              </div>
+              <div className="text-xs text-neutral-400 truncate">
+                {deckState.artist || 'Unknown Artist'}
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-neutral-500 italic">No track loaded</div>
+          )}
+        </div>
+
+        {/* Transport Controls */}
+        <div className="flex items-center justify-center gap-3 p-4 bg-black/20">
+          {/* Cue Button */}
+          <Button
+            variant="ghost"
+            disabled={!deckState.videoId}
+            className="w-14 h-14 rounded-xl bg-neutral-800/80 hover:bg-neutral-700 disabled:opacity-30 border border-neutral-600/50 text-neutral-400 hover:text-white shadow-lg"
+          >
+            <span className="text-xs font-bold">CUE</span>
+          </Button>
+
+          {/* Play/Pause Button */}
+          <Button
+            variant="ghost"
+            onClick={togglePlay}
+            disabled={!deckState.videoId}
+            className={`w-16 h-16 rounded-full ${
+              deckState.playing ? bgAccent : 'bg-neutral-800/80 hover:bg-neutral-700'
+            } disabled:opacity-30 border-2 ${
+              deckState.playing ? 'border-white/30' : 'border-neutral-600/50'
+            } shadow-xl`}
+            style={{
+              boxShadow: deckState.playing ? `0 0 25px ${accentColor}` : 'none',
+            }}
+          >
+            {deckState.playing ? (
+              <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+              </svg>
+            ) : (
+              <svg className="w-7 h-7 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
+          </Button>
+
+          {/* Sync Button */}
+          <Button
+            variant="ghost"
+            disabled={!deckState.videoId}
+            className="w-14 h-14 rounded-xl bg-neutral-800/80 hover:bg-neutral-700 disabled:opacity-30 border border-neutral-600/50 text-neutral-400 hover:text-white shadow-lg"
+          >
+            <span className="text-xs font-bold">SYNC</span>
+          </Button>
+        </div>
+
+        {/* Level Meter */}
+        <div className="px-4 pb-4">
+          <div className="h-2 bg-neutral-800/80 rounded-full overflow-hidden">
+            <div
+              className={`h-full ${bgAccent} transition-all duration-100 rounded-full`}
+              style={{
+                width: `${currentVolume * 100}%`,
+                boxShadow: `0 0 8px ${accentColor}`,
+              }}
+            />
+          </div>
         </div>
       </div>
     </div>
