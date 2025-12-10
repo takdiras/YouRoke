@@ -9,6 +9,7 @@ interface WaveformSeekBarProps {
   backgroundColor?: string;
   height?: number;
   onSeek: (time: number) => void;
+  onBpmDetected?: (bpm: number) => void;
   className?: string;
   /** Zoom level - how many seconds of audio visible on screen (default: 30) */
   zoomSeconds?: number;
@@ -18,6 +19,7 @@ interface WaveformData {
   videoId: string;
   waveform: number[];
   duration: number;
+  bpm?: number;
   cached: boolean;
   synthetic?: boolean;
 }
@@ -39,6 +41,7 @@ export function WaveformSeekBar({
   backgroundColor = 'transparent',
   height = 60,
   onSeek,
+  onBpmDetected,
   className = '',
   zoomSeconds = 30,
 }: WaveformSeekBarProps) {
@@ -131,17 +134,20 @@ export function WaveformSeekBar({
         
         clearInterval(progressInterval);
         setLoadingProgress(100);
-        console.log(data.waveform)
         setWaveformData(data.waveform);
         setLoadingState('loaded');
+        
+        // Notify parent of detected BPM
+        if (data.bpm && onBpmDetected) {
+          onBpmDetected(data.bpm);
+        }
         
         // Debug: log waveform statistics
         const minVal = Math.min(...data.waveform);
         const maxVal = Math.max(...data.waveform);
         const avgVal = data.waveform.reduce((a, b) => a + b, 0) / data.waveform.length;
-        console.log(`[Waveform] Loaded ${data.waveform.length} samples for ${videoId} (cached: ${data.cached}, synthetic: ${data.synthetic})`);
+        console.log(`[Waveform] Loaded ${data.waveform.length} samples for ${videoId} (cached: ${data.cached}, synthetic: ${data.synthetic}, bpm: ${data.bpm || 'unknown'})`);
         console.log(`[Waveform] Stats - min: ${minVal.toFixed(3)}, max: ${maxVal.toFixed(3)}, avg: ${avgVal.toFixed(3)}`);
-        console.log(`[Waveform] First 10 values:`, data.waveform.slice(0, 10));
       } catch (error) {
         console.error('[Waveform] Failed to load:', error);
         clearInterval(progressInterval);
@@ -152,7 +158,7 @@ export function WaveformSeekBar({
     };
 
     fetchWaveform();
-  }, [videoId]);
+  }, [videoId, onBpmDetected]);
 
   // Normalize and enhance waveform data for better visualization
   const enhancedWaveform = useCallback((data: number[]): number[] => {

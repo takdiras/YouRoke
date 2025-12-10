@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react';
 import { useDJStore } from '../stores/djStore';
 import { applyCurve } from '../utils/crossfaderCurve';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,7 @@ interface DeckDisplayProps {
  *
  * Features:
  * - Real YouTube waveform visualization with seeking
- * - Track info display
+ * - Track info display with BPM
  * - Play/pause/cue controls
  * - Volume/level meters
  */
@@ -27,6 +28,8 @@ export function DeckDisplay({ deck, className = '' }: DeckDisplayProps) {
   );
   const crossfaderValue = useDJStore((state) => state.crossfaderValue);
   const crossfaderCurve = useDJStore((state) => state.crossfaderCurve);
+  
+  const [bpm, setBpm] = useState<number>(0);
 
   const mixValues = applyCurve(crossfaderValue, crossfaderCurve);
   const currentVolume = deck === 'A' ? mixValues.deckAVolume : mixValues.deckBVolume;
@@ -40,6 +43,10 @@ export function DeckDisplay({ deck, className = '' }: DeckDisplayProps) {
   const handleSeek = (time: number) => {
     seekDeck(time);
   };
+  
+  const handleBpmDetected = useCallback((detectedBpm: number) => {
+    setBpm(detectedBpm);
+  }, []);
 
   return (
     <div className={`bg-neutral-900/95 border border-neutral-700/50 rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden ${className}`}>
@@ -54,9 +61,18 @@ export function DeckDisplay({ deck, className = '' }: DeckDisplayProps) {
             style={{ boxShadow: deckState.playing ? `0 0 10px ${accentColor}` : 'none' }}
           />
         </div>
-        <span className="text-xs text-neutral-400 font-mono bg-neutral-800/50 px-2 py-0.5 rounded">
-          {Math.round(currentVolume * 100)}%
-        </span>
+        <div className="flex items-center gap-3">
+          {/* BPM Display */}
+          {bpm > 0 && (
+            <div className={`flex items-center gap-1 ${accentClass}`}>
+              <span className="text-lg font-bold font-mono">{bpm}</span>
+              <span className="text-xs text-neutral-400">BPM</span>
+            </div>
+          )}
+          <span className="text-xs text-neutral-400 font-mono bg-neutral-800/50 px-2 py-0.5 rounded">
+            {Math.round(currentVolume * 100)}%
+          </span>
+        </div>
       </div>
 
       {/* Waveform SeekBar */}
@@ -69,6 +85,7 @@ export function DeckDisplay({ deck, className = '' }: DeckDisplayProps) {
           playedColor={playedColor}
           height={80}
           onSeek={handleSeek}
+          onBpmDetected={handleBpmDetected}
           className="h-full"
         />
       </div>

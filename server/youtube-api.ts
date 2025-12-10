@@ -101,6 +101,84 @@ function generateWaveformData(audioBuffer: Buffer, sampleCount: number = 200): n
 }
 
 /**
+ * Detect BPM from waveform data using autocorrelation
+ * Analyzes the periodicity in the amplitude envelope to find tempo
+ */
+function detectBPM(waveform: number[], durationSeconds: number): number {
+  if (waveform.length < 100 || durationSeconds < 10) {
+    return 0; // Not enough data
+  }
+
+  const samplesPerSecond = waveform.length / durationSeconds;
+  
+  // BPM range to search (60-180 BPM covers most music)
+  const minBPM = 60;
+  const maxBPM = 180;
+  
+  // Convert BPM to lag in samples
+  const minLag = Math.floor((60 / maxBPM) * samplesPerSecond);
+  const maxLag = Math.floor((60 / minBPM) * samplesPerSecond);
+  
+  // Calculate energy envelope (smooth the waveform)
+  const windowSize = Math.max(3, Math.floor(samplesPerSecond / 20));
+  const envelope: number[] = [];
+  for (let i = 0; i < waveform.length; i++) {
+    let sum = 0;
+    let count = 0;
+    for (let j = Math.max(0, i - windowSize); j < Math.min(waveform.length, i + windowSize); j++) {
+      sum += waveform[j];
+      count++;
+    }
+    envelope.push(sum / count);
+  }
+  
+  // Detect onsets (sudden increases in energy)
+  const onsets: number[] = [];
+  for (let i = 1; i < envelope.length; i++) {
+    const diff = envelope[i] - envelope[i - 1];
+    onsets.push(Math.max(0, diff));
+  }
+  
+  // Autocorrelation to find periodicity
+  let bestLag = 0;
+  let bestCorrelation = 0;
+  
+  for (let lag = minLag; lag <= maxLag && lag < onsets.length / 2; lag++) {
+    let correlation = 0;
+    let count = 0;
+    
+    for (let i = 0; i < onsets.length - lag; i++) {
+      correlation += onsets[i] * onsets[i + lag];
+      count++;
+    }
+    
+    if (count > 0) {
+      correlation /= count;
+      
+      // Weight towards common tempos (120-130 BPM)
+      const bpmAtLag = (60 * samplesPerSecond) / lag;
+      const tempoWeight = 1 - Math.abs(bpmAtLag - 125) / 200;
+      correlation *= (1 + tempoWeight * 0.3);
+      
+      if (correlation > bestCorrelation) {
+        bestCorrelation = correlation;
+        bestLag = lag;
+      }
+    }
+  }
+  
+  if (bestLag === 0) {
+    return 0;
+  }
+  
+  // Convert lag to BPM
+  const bpm = (60 * samplesPerSecond) / bestLag;
+  
+  // Round to nearest integer
+  return Math.round(bpm);
+}
+
+/**
  * YouTube Search API middleware for Vite dev server
  */
 export function youtubeApiMiddleware(): Connect.NextHandleFunction {
@@ -123,7 +201,7 @@ export function youtubeApiMiddleware(): Connect.NextHandleFunction {
     try {
       console.log(`[YouTube API] Searching for: "${query}"`);
       
-      const results = await youtubeSearch.GetListByKeyword(query, false, 20, [{ type: 'video' }]);
+      const results = await youtubeSearch.GetListByKeyword(query, false, 50, [{ type: 'video' }]);
       
       const videos: VideoResult[] = [];
       
@@ -377,6 +455,10 @@ export function youtubeWaveformMiddleware(): Connect.NextHandleFunction {
         isSynthetic = true;
       }
       
+      // Detect BPM from waveform
+      const bpm = detectBPM(waveform, duration);
+      console.log(`[YouTube Waveform] Detected BPM: ${bpm || 'unknown'}`);
+      
       // Cache the result
       waveformCache.set(cacheKey, waveform);
       
@@ -389,6 +471,7 @@ export function youtubeWaveformMiddleware(): Connect.NextHandleFunction {
         videoId, 
         waveform,
         duration,
+        bpm,
         cached: false,
         synthetic: isSynthetic 
       }));
